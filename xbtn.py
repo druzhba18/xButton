@@ -2,53 +2,108 @@ import time
 from machine import Pin
 
 class Btn:
-    def __init__(self, pin=-1, led=-1, pull=1):
-            self.pull = pull;
-            self.btnState = 0
-            self.highState = int(self.pull==1)#1
-            self.lowState =  not bool(self.highState)
-            self.clickCount = 0
-            self.debug = False
-            self.buttonReleased = True
-            self.strRes = ""
-            self.lastBtnState = 0   
-            self.lastDebounceTime = 0  
-            self.debounceDelay = 50    
+    # pin: pin, button connected to
+    # pull: 1-PULLDOWN, 2-PULLUP
+    # led: pin, LED connected to
+    # led_inversed: if True, LED lights up when the button is released and goes out when pressed
+    def __init__(self, pin=-1, led=-1, pull=1, led_inversed=False):
+        
+            # debounce delay
+            self.debounceDelay = 50
+            
+            # double click delay
             self.doubleClickDelay = 200
+            
+            # long press delay
             self.longPressDelay = 1000
+            
+            # very long press delay
             self.veryLongPressDelay = 5000
+            
+            # should the LED blink after a long press?
             self.blinkOnLongPress = True
-            self.repeatCount = 0
-            self.oldRepeatCount = 0
+            
+            # delay of repeated operation when holding the button
             self.repeatDelay = 500
+            
+            # delay of the first repeated operation when holding the button
             self.firstRepeatDelay = 1000
+            
+            # should the LED blink when repeated operation when holding the button?
             self.blinkOnRepeat = True
-            self.ledHigh = 1
-            self.ledLow = 0
-            self.ledOff_ms = 0
+
+            # LEDs blinking delay
             self.ledOnDelay = 50
+            
+            # LEDs high level
+            self.ledHigh = 1
+            
+            # LEDs low level
+            self.ledLow = 0
+            
+            # debug True if you need to track some values
+            self.debug = False
+            
+            # button state if it is released, not pressed
+            self.highState = int(pull==1)
+            
+            # button state if it is pressed
+            self.lowState =  not bool(self.highState)
+            
+            # button state
+            self.btnState = 0
+            
+            # remembered state
+            self.lastBtnState = 0
+            
+            # count of clicks
+            self.clickCount = 0
+            
+            # flag button released
+            self.buttonReleased = True
+            
+            # clicks sequence result
+            self.strRes = ""
+            
+            # remembered time for debouncing
+            self.lastDebounceTime = 0
+            
+            # number of operations while holding the button
+            self.repeatCount = 0
+            
+            # remembered value
+            self.oldRepeatCount = 0
+            
+            # remembered diode turn-off time
+            self.ledOff_ms = 0
+            
+            # button hold duration
             self.L = 0
+            
+            # remembered value
             self.oldLedState = False
+            
+            # characters to form the result string
             self.singlePressKey = "."
             self.longPressKey = "-"
             self.veryLongPressKey = "V"
             
-            self.setPins(pin, led)
+            self.btnGpio = pin
+            if pin >= 0:
+                self.btnPin =  Pin(pin, Pin.IN, pull)       
+            self.ledGpio = led
+            if led >= 0:
+                self.ledPin =  Pin(led, Pin.OUT)
+            if led_inversed:
+                self.ledHigh = not bool(self.ledHigh)
+                self.ledLow = not bool(self.ledLow)
+            self.ledPin.value(self.ledHigh)    
             self.ledOff()
             self.reading = self.btnPin.value()
             self.lastBtnState = self.reading
             self.tDown = time.ticks_ms()
             self.tUp = time.ticks_ms()
 
-    def setPins(self, b, l):
-            self.btnGpio = b
-            if b >= 0:
-                #pull_up = 1  #pull_down = 2
-                self.btnPin =  Pin(b, Pin.IN, self.pull)       
-            self.ledGpio = l
-            if l >= 0:
-                self.ledPin =  Pin(l, Pin.OUT)
-        
     def tick(self): 
       if self.btnGpio<0:
             return
@@ -56,16 +111,15 @@ class Btn:
       self.reading = self.btnPin.value()
       
       if self.reading != self.lastBtnState:
-            #сброс таймера дребезга
+            # reset debounce timer
             self.lastDebounceTime = time.ticks_ms()
 
       if (((time.ticks_ms() - self.lastDebounceTime) > self.debounceDelay) and (self.reading != self.btnState)): 
-            # изменилось состояние кнопки (момент нажатия или отпускания кнопки)
+            # button state has changed (the moment the button is pressed or released)
             self.btnState = self.reading
-            #self.buttonReleased = (((self.btnState==self.highState) and (self.pull==1)) or ((self.btnState==self.lowState) and (self.pull==2)))
             self.buttonReleased = (self.btnState == self.highState)
             if self.buttonReleased:
-                    # кнопка отпущена
+                    # the button is released
                     self.tUp = time.ticks_ms()
                     self.ledOff()
                     self.L = self.tUp - self.tDown 
@@ -80,7 +134,7 @@ class Btn:
                             print("Button released after " + str(self.L) + " ms, res "  + self.strRes)
                     self.onReleased() 
             else: 
-                    # кнопка нажата
+                    # the button is pressed
                     self.saveLed()
                     self.tDown = time.ticks_ms()
                     self.ledOn()
@@ -89,7 +143,7 @@ class Btn:
                             print("Button pressed ")
                     self.onPressed()               
       else:
-          # не изменилось состояние кнопки
+          # button state has not changed
           if self.buttonReleased:
                 self.oldRepeatCount = 0;
                 if (time.ticks_ms() - self.tUp) > self.doubleClickDelay:
@@ -112,29 +166,28 @@ class Btn:
                         self.strRes = ""
                         
           else:
-                t = time.ticks_ms() - self.tDown
-                if t > (self.veryLongPressDelay + self.ledOnDelay):
+                self.L = time.ticks_ms() - self.tDown
+                if self.L > (self.veryLongPressDelay + self.ledOnDelay):
                     pass 
-                elif t > self.veryLongPressDelay:   
+                elif self.L > self.veryLongPressDelay:   
                     if self.blinkOnLongPress:
                         self.ledOff()
-                elif t > (self.longPressDelay + self.ledOnDelay):   
+                elif self.L > (self.longPressDelay + self.ledOnDelay):   
                     pass 
-                elif t > self.longPressDelay:   
+                elif self.L > self.longPressDelay:   
                     if self.blinkOnLongPress:
                         self.ledOff()
                  
-                if t < self.firstRepeatDelay + self.repeatDelay:
-                    self.repeatCount = t  // self.firstRepeatDelay
+                if self.L < self.firstRepeatDelay + self.repeatDelay:
+                    self.repeatCount = self.L  // self.firstRepeatDelay
                 else:
-                    self.repeatCount = (t - self.firstRepeatDelay) // self.repeatDelay + 1
+                    self.repeatCount = (self.L - self.firstRepeatDelay) // self.repeatDelay + 1
                     
                 if (self.repeatCount > self.oldRepeatCount):
-                    print("repeatCount =", str(self.repeatCount), " t =", str(t))
-                    self.onRepeat()
                     self.oldRepeatCount = self.repeatCount
                     if self.blinkOnRepeat:
                         self.ledOff()
+                    self.onRepeat()
                     
                 self.ledOn() 
 
@@ -147,22 +200,22 @@ class Btn:
         pass
     
     def onSinglePressed(self):
-        print("pin" + str(self.btnGpio) + ", простое нажатие, " + str(self.L) + " мс")
+        print("pin" + str(self.btnGpio) + ", simple click, " + str(self.L) + " ms")
 
     def onDoublePressed(self):
-        print("pin" + str(self.btnGpio) + ", двойное нажатие")
+        print("pin" + str(self.btnGpio) + ", double click")
       
     def onLongPressed(self):
-        print("pin" + str(self.btnGpio) + ", долгое нажатие, " + str(self.L) + " мс") 
+        print("pin" + str(self.btnGpio) + ", long click, " + str(self.L) + " ms") 
       
     def onVeryLongPressed(self):
-        print("pin" + str(self.btnGpio) + ", очень долгое нажатие, " + str(self.L) + " мс") 
+        print("pin" + str(self.btnGpio) + ", very long click, " + str(self.L) + " ms") 
       
     def onSomethingPressed(self):
-        print("pin" + str(self.btnGpio) + ", действие не определено, res " + self.strRes) 
+        print("pin" + str(self.btnGpio) + ", action not defined, res " + self.strRes) 
     
     def onRepeat(self):
-        pass
+        print("repeatCount =", str(self.repeatCount), " t =", str(self.L))
         
     def ledOn(self):
         if time.ticks_ms() - self.ledOff_ms < self.ledOnDelay:
@@ -183,12 +236,3 @@ class Btn:
     def restoreLed(self):
         if (self.ledGpio>-1):
             self.ledPin.value(self.oldLedState)
-            
-
-# b = Btn(12, 13, 1)
-# b.debug = True
-# 
-# 
-# while True:
-#     b.tick()                
-# 
