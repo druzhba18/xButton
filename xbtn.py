@@ -97,7 +97,8 @@ class Btn:
             if led_inversed:
                 self.ledHigh = not bool(self.ledHigh)
                 self.ledLow = not bool(self.ledLow)
-            self.ledPin.value(self.ledHigh)    
+            if (self.ledGpio>-1):
+                self.ledPin.value(self.ledHigh)    
             self.ledOff()
             self.reading = self.btnPin.value()
             self.lastBtnState = self.reading
@@ -236,3 +237,8 @@ class Btn:
     def restoreLed(self):
         if (self.ledGpio>-1):
             self.ledPin.value(self.oldLedState)
+            
+
+
+
+
